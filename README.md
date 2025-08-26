@@ -2,7 +2,7 @@
 <p align="center">
   <a href="https://gpt-oss.com"><strong>Try gpt-oss</strong></a> ·
   <a href="https://cookbook.openai.com/topic/gpt-oss"><strong>Guides</strong></a> ·
-  <a href="https://openai.com/index/gpt-oss-model-card"><strong>Model card</strong></a> ·
+  <a href="https://arxiv.org/abs/2508.10925"><strong>Model card</strong></a> ·
   <a href="https://openai.com/index/introducing-gpt-oss/"><strong>OpenAI blog</strong></a>
 </p>
 <p align="center">
@@ -498,3 +498,17 @@ We recommend sampling with `temperature=1.0` and `top_p=1.0`.
 The reference implementations in this repository are meant as a starting point and inspiration. Outside of bug fixes we do not intend to accept new feature contributions. If you build implementations based on this code such as new tool implementations you are welcome to contribute them to the [`awesome-gpt-oss.md`](./awesome-gpt-oss.md) file.
 
 [harmony]: https://github.com/openai/harmony
+
+## Citation
+
+```bibtex
+@misc{openai2025gptoss120bgptoss20bmodel,
+      title={gpt-oss-120b & gpt-oss-20b Model Card}, 
+      author={OpenAI},
+      year={2025},
+      eprint={2508.10925},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2508.10925}, 
+}
+```
