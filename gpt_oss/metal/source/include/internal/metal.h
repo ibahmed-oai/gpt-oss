@@ -58,7 +58,13 @@ struct gptoss_metal_buffer {
     void* ptr;
 };
 
-enum gptoss_status gptoss_metal_buffer_create(
+enum gptoss_status gptoss_metal_buffer_create_shared(
+    const struct gptoss_metal_device* device,
+    size_t size,
+    const void* data,
+    struct gptoss_metal_buffer* buffer_out);
+
+enum gptoss_status gptoss_metal_buffer_create_private(
     const struct gptoss_metal_device* device,
     size_t size,
     const void* data,

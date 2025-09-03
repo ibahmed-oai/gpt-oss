@@ -48,61 +48,61 @@ enum gptoss_status GPTOSS_ABI gptoss_context_create(
     context->max_tokens = context_length;
 
     // Activation buffers
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->embedding_dim * sizeof(float), NULL, &context->residual_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->embedding_dim * sizeof(float), NULL, &context->residual_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->embedding_dim * sizeof(float), NULL, &context->rmsnorm_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->embedding_dim * sizeof(float), NULL, &context->rmsnorm_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->head_dim * (model->num_heads + 2 * model->num_kv_heads) * sizeof(float), NULL, &context->qkv_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->head_dim * (model->num_heads + 2 * model->num_kv_heads) * sizeof(float), NULL, &context->qkv_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->head_dim * model->num_heads * sizeof(float), NULL, &context->sdpa_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->head_dim * model->num_heads * sizeof(float), NULL, &context->sdpa_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->num_experts * sizeof(float), NULL, &context->gate_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->num_experts * sizeof(float), NULL, &context->gate_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->num_experts * sizeof(struct gptoss_expert_prediction), NULL, &context->expert_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->num_experts * sizeof(struct gptoss_expert_prediction), NULL, &context->expert_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->num_active_experts * model->mlp_dim * sizeof(float), NULL, &context->swiglu_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->num_active_experts * model->mlp_dim * sizeof(float), NULL, &context->swiglu_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->num_active_experts * model->embedding_dim * sizeof(float), NULL, &context->moe_activation_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->max_batch_tokens * model->num_active_experts * model->embedding_dim * sizeof(float), NULL, &context->moe_activation_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
 
     // Input/output buffers
-    status = gptoss_metal_buffer_create(&model->device, context_length * sizeof(uint32_t), NULL, &context->token_buffer);
+    status = gptoss_metal_buffer_create_shared(&model->device, context_length * sizeof(uint32_t), NULL, &context->token_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->vocabulary_size * sizeof(float), NULL, &context->score_buffer);
+    status = gptoss_metal_buffer_create_shared(&model->device, model->max_batch_tokens * model->vocabulary_size * sizeof(float), NULL, &context->score_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->vocabulary_size * sizeof(float), NULL, &context->prob_buffer);
+    status = gptoss_metal_buffer_create_shared(&model->device, model->max_batch_tokens * model->vocabulary_size * sizeof(float), NULL, &context->prob_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * model->max_threadgroups * sizeof(float), NULL, &context->sum_buffer);
+    status = gptoss_metal_buffer_create_shared(&model->device, model->max_batch_tokens * model->max_threadgroups * sizeof(float), NULL, &context->sum_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->max_batch_tokens * sizeof(uint64_t), NULL, &context->argmax_buffer);
+    status = gptoss_metal_buffer_create_shared(&model->device, model->max_batch_tokens * sizeof(uint64_t), NULL, &context->argmax_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
-    status = gptoss_metal_buffer_create(&model->device, model->num_blocks * context_length * 2 * model->num_kv_heads * model->head_dim * sizeof(float), NULL, &context->kvcache_buffer);
+    status = gptoss_metal_buffer_create_private(&model->device, model->num_blocks * context_length * 2 * model->num_kv_heads * model->head_dim * sizeof(float), NULL, &context->kvcache_buffer);
     if (status != gptoss_status_success) {
         goto cleanup;
     }

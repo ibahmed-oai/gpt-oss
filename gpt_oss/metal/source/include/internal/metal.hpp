@@ -146,7 +146,7 @@ private:
 class Buffer {
 public:
     inline Buffer(const Device& dev, size_t size, const void* data = nullptr) {
-        Check(gptoss_metal_buffer_create(dev.handle(), size, data, &buffer_), "create buffer");
+        Check(gptoss_metal_buffer_create_shared(dev.handle(), size, data, &buffer_), "create buffer");
     }
 
     inline ~Buffer() {

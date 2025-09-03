@@ -244,7 +244,7 @@ enum gptoss_status gptoss_metal_function_release(
     return gptoss_status_success;
 }
 
-enum gptoss_status gptoss_metal_buffer_create(
+enum gptoss_status gptoss_metal_buffer_create_shared(
     const struct gptoss_metal_device* device,
     size_t size,
     const void* data,
@@ -256,6 +256,29 @@ enum gptoss_status gptoss_metal_buffer_create(
         buffer_obj = [device_obj newBufferWithBytes:data length:size options:MTLResourceStorageModeShared];
     } else {
         buffer_obj = [device_obj newBufferWithLength:size options:MTLResourceStorageModeShared];
+    }
+    if (buffer_obj == nil) {
+        GPTOSS_LOG_ERROR("failed to create Metal buffer of size %zu", size);
+        return gptoss_status_unsupported_system;
+    }
+    buffer_out->object = (void*) buffer_obj;
+    buffer_out->size = size;
+    buffer_out->ptr = [buffer_obj contents];
+    return gptoss_status_success;
+}
+
+enum gptoss_status gptoss_metal_buffer_create_private(
+    const struct gptoss_metal_device* device,
+    size_t size,
+    const void* data,
+    struct gptoss_metal_buffer* buffer_out)
+{
+    id<MTLDevice> device_obj = (id<MTLDevice>) device->object;
+    id<MTLBuffer> buffer_obj = nil;
+    if (data != NULL) {
+        buffer_obj = [device_obj newBufferWithBytes:data length:size options:MTLResourceStorageModePrivate];
+    } else {
+        buffer_obj = [device_obj newBufferWithLength:size options:MTLResourceStorageModePrivate];
     }
     if (buffer_obj == nil) {
         GPTOSS_LOG_ERROR("failed to create Metal buffer of size %zu", size);
