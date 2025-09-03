@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -53,6 +54,8 @@ struct gptoss_model {
     // Maximum number of tokens that can be processed in a single batch.
     // Once the batch size is reached, we process it to fill the KV cache.
     size_t max_batch_tokens;
+
+    bool lock_memory;
 
     size_t weights_size;
     size_t allocation_size;

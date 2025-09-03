@@ -290,6 +290,12 @@ enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
 
     prefetch_fd(fd, model_mapping_start, model_mapping_size, path);
 
+    if (mlock(model_mapping_ptr, model_mapping_size) != 0) {
+        GPTOSS_LOG_WARNING("mlock(%s, size=%zu) failed with error %d", path, model_mapping_size, errno);
+    } else {
+        model->lock_memory = true;
+    }
+
     // Initialize Metal
     status = gptoss_metal_device_create_system_default(&model->device);
     if (status != gptoss_status_success) {
@@ -497,6 +503,12 @@ enum gptoss_status GPTOSS_ABI gptoss_model_release(
             // Weight buffers
 
             if (model->mapping_ptr != NULL && model->mapping_size != 0) {
+                if (model->lock_memory) {
+                    if (munlock(model->mapping_ptr, model->mapping_size) != 0) {
+                        GPTOSS_LOG_WARNING("munlock for model weight mapping failed with error %d", errno);
+                    }
+                }
+
                 if (munmap(model->mapping_ptr, model->mapping_size) != 0) {
                     GPTOSS_LOG_WARNING("munmap for model weight mapping failed with error %d", errno);
                 }
