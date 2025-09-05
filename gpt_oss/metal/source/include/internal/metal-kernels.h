@@ -160,7 +160,8 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows);
+    uint32_t num_rows,
+    char* label);
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul(
     const struct gptoss_metal_command_buffer* command_buffer,
@@ -182,7 +183,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows);
+    uint32_t num_rows, char* label);
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_rope(
     const struct gptoss_metal_command_buffer* command_buffer,

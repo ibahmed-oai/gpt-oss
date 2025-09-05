@@ -260,7 +260,7 @@ public:
                 buffer_handles.size(),
                 buffer_handles.data(),
                 /*buffer_offsets=*/nullptr,
-                threadgroup_buffer_size),
+                threadgroup_buffer_size, "kernel"),
             "gptoss_metal_command_buffer_encode_launch_kernel");
     }
 

@@ -5,8 +5,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <gpt-oss.h>
+#include <stdio.h>
 
 #include "internal/datatype.h"
 #include "internal/model.h"
@@ -190,6 +190,7 @@ static enum gptoss_status process_tokens(
         input_batch_start < input_tokens_end;
         input_batch_start += model->max_batch_tokens)
     {
+        size_t chunk_count = (input_batch_start - input_tokens_offset) / model->max_batch_tokens;
         const size_t input_batch_size = math_min(model->max_batch_tokens, input_tokens_end - input_batch_start);
         const size_t input_batch_end = input_batch_start + input_batch_size;
         const size_t output_batch_size = math_sub_sat(num_output_tokens, input_tokens_end - input_batch_end);
@@ -399,7 +400,10 @@ static enum gptoss_status process_tokens(
                     GPTOSS_LOG_ERROR("failed to encode %s kernel launch", kernel_name);
                     return status;
                 }
-
+                // ibahmed: ragged matmul -- MoE gating and SwiGLU.
+                // Create label with kernel namd, block index and iteration number
+                char label1[128];
+                snprintf(label1, sizeof(label1), "f32_mf4w_moe_matmul_swiglu_block_%u_iter_%zu", n, chunk_count);
                 status = gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul_swiglu(
                     command_buffer,
                     &model->f32_mf4w_moe_matmul_swiglu_fn,
@@ -421,12 +425,14 @@ static enum gptoss_status process_tokens(
                     num_block_output_tokens,
                     model->num_active_experts,
                     model->embedding_dim,
-                    model->mlp_dim);
+                    model->mlp_dim, label1);
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul_swiglu kernel launch");
                     return status;
                 }
-
+                // ibahmed: ragged matmul -- MoE gating no SwiGLU output.
+                char label2[128];
+                snprintf(label2, sizeof(label2), "f32_mf4w_moe_matmul_block_%u_iter_%zu", n, chunk_count);
                 status = gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul(
                     command_buffer,
                     &model->f32_mf4w_moe_matmul_fn,
@@ -447,7 +453,7 @@ static enum gptoss_status process_tokens(
                     num_block_output_tokens,
                     model->num_active_experts,
                     model->mlp_dim,
-                    model->embedding_dim);
+                    model->embedding_dim, label2);
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul kernel launch");
                     return status;

@@ -249,5 +249,9 @@ BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_3072, "GPT_OSS_20B_PATH",
                   "GPT_OSS_PROMPT_FILE_PATH", 3072)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_256, "GPT_OSS_20B_PATH",
+                  "GPT_OSS_PROMPT_FILE_PATH", 256)
+    ->UseRealTime()
+    ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

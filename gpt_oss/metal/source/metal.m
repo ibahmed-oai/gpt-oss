@@ -408,7 +408,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_kernel(
     size_t num_device_buffers,
     const struct gptoss_metal_buffer** device_buffers,
     const size_t* device_buffer_offsets,
-    size_t threadgroup_buffer_size)
+    size_t threadgroup_buffer_size, char* label)
 {
     if (command_buffer->object == NULL || function->pipeline_state_object == NULL) {
         return gptoss_status_invalid_state;
@@ -417,8 +417,20 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_kernel(
     id<MTLCommandBuffer> command_buffer_obj = (id<MTLCommandBuffer>) command_buffer->object;
     id<MTLComputePipelineState> pipeline_state_obj = (id<MTLComputePipelineState>) function->pipeline_state_object;
 
-    id<MTLComputeCommandEncoder> command_encoder_obj = [command_buffer_obj computeCommandEncoder];
 
+
+    id<MTLComputeCommandEncoder> command_encoder_obj = [command_buffer_obj computeCommandEncoder];
+ // ---- Debug group: label the encoder with the kernel name (if available)
+
+    // ---- Label + debug group (preferred place for Instruments visibility)
+    if (label && *label) {
+        NSString *s = [NSString stringWithUTF8String:label];
+        command_encoder_obj.label = s;
+        [command_encoder_obj pushDebugGroup:s];
+    } else if (pipeline_state_obj.label) {
+        command_encoder_obj.label = pipeline_state_obj.label;
+        [command_encoder_obj pushDebugGroup:pipeline_state_obj.label];
+    }
     // Set kernel arguments
     [command_encoder_obj setComputePipelineState:pipeline_state_obj];
     [command_encoder_obj setBytes:params length:params_size atIndex:0];
@@ -435,6 +447,8 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_kernel(
     const MTLSize threadgroup_size = MTLSizeMake(threadgroup_size_x, threadgroup_size_y, threadgroup_size_z);
     const MTLSize num_threadgroups = MTLSizeMake(num_threadgroups_x, num_threadgroups_y, num_threadgroups_z);
     [command_encoder_obj dispatchThreadgroups:num_threadgroups threadsPerThreadgroup:threadgroup_size];
+    // ---- End debug group before finishing the encoder
+    [command_encoder_obj popDebugGroup];
     [command_encoder_obj endEncoding];
 
     return gptoss_status_success;

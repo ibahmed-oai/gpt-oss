@@ -47,7 +47,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_u32_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "u32_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_fill_random(
@@ -95,7 +95,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_fill_random(
@@ -143,7 +143,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "bf16_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_mf4_f32_convert(
@@ -184,7 +184,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_mf4_f32_convert(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         3, (const struct gptoss_metal_buffer *[]) {block_buffer, scale_buffer, output_buffer}, NULL,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "mf4_f32_convert");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_f32_embeddings(
@@ -227,7 +227,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_f32_embeddings
         3,
         (const struct gptoss_metal_buffer *[]) {token_buffer, weight_buffer, output_buffer},
         (const size_t[]) {token_offset, weight_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "bf16_f32_embeddings");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
@@ -274,7 +274,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
         3,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_rmsnorm");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
@@ -332,7 +332,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_matmul");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_add(
@@ -390,7 +390,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_ad
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_matmul_add");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_unembedding(
@@ -446,7 +446,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_unembeddi
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, output_buffer, argmax_buffer},
         (const size_t[]) {input_offset, weight_offset, output_offset, argmax_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_unembedding");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul_swiglu(
@@ -470,7 +470,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows)
+    uint32_t num_rows, char* label)
 {
     if (command_buffer->object == NULL || f32_mf4w_moe_matmul_swiglu_fn->pipeline_state_object == NULL) {
         GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul_swiglu kernel launch: invalid command buffer or pipeline state object");
@@ -520,7 +520,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
         6,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, weight_block_buffer, weight_scale_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, weight_block_offset, weight_scale_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, label);
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul(
@@ -543,7 +543,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows)
+    uint32_t num_rows, char* label)
 {
     if (command_buffer->object == NULL || f32_mf4w_moe_matmul_fn->pipeline_state_object == NULL) {
         GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul kernel launch: invalid command buffer or pipeline state object");
@@ -592,7 +592,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
         6,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, weight_block_buffer, weight_scale_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, weight_block_offset, weight_scale_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, label);
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_rope(
@@ -643,7 +643,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_rope(
         num_qk_heads / num_simdgroups, num_tokens, 1,
         sizeof(args), &args,
         1, (const struct gptoss_metal_buffer *[]) {activations_buffer}, NULL,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_rope");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_accumulate(
@@ -693,7 +693,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_accumulate(
         3,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_accumulate");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_topk(
@@ -729,7 +729,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_topk(
         2,
         (const struct gptoss_metal_buffer *[]) {input_buffer, output_buffer},
         (const size_t[]) {input_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_topk");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sdpa(
@@ -786,7 +786,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sdpa(
         5,
         (const struct gptoss_metal_buffer *[]) {q_buffer, k_buffer, v_buffer, s_buffer, output_buffer},
         (const size_t[]) {q_offset, k_offset, v_offset, s_offset, output_offset},
-        /*threadgroup_buffer_size=*/half_threadgroup_size * 8 * 4 * sizeof(float));
+        /*threadgroup_buffer_size=*/half_threadgroup_size * 8 * 4 * sizeof(float), "f32_sdpa");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_softmax(
@@ -834,7 +834,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_softmax(
         4,
         (const struct gptoss_metal_buffer *[]) {score_buffer, argmax_buffer, prob_buffer, sum_buffer},
         (const size_t[]) {score_offset, argmax_offset, prob_offset, sum_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_softmax");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sample(
