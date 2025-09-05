@@ -79,7 +79,8 @@ static void prefetch_fd(int fd, size_t offset, size_t size, const char* path) {
 
 enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     const char* path,
-    gptoss_model_t* model_out)
+    gptoss_model_t* model_out,
+    size_t max_batch_tokens)
 {
     *model_out = NULL;
 

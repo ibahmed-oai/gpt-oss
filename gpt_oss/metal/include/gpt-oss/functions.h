@@ -21,7 +21,8 @@ extern "C" {
  */
 enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     const char* path,
-    gptoss_model_t* model_out);
+    gptoss_model_t* model_out,
+    size_t max_batch_tokens);
 
 /*
  * Query the Tokenizer object associated with the Model.

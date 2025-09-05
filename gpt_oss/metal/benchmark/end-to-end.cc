@@ -23,7 +23,8 @@ static void end2end_decode(benchmark::State &state, const char *env_var_name) {
   }
 
   gptoss_model_t model_ptr = nullptr;
-  gptoss_status status = gptoss_model_create_from_file(model_path, &model_ptr);
+  gptoss_status status =
+      gptoss_model_create_from_file(model_path, &model_ptr, 0);
   if (status != gptoss_status_success) {
     state.SkipWithError(
         std::format("failed to load model from file {}", model_path));
@@ -169,7 +170,8 @@ static void end2end_prefill(benchmark::State &state,
   }
 
   gptoss_model_t model_ptr = nullptr;
-  gptoss_status status = gptoss_model_create_from_file(model_path, &model_ptr);
+  gptoss_status status =
+      gptoss_model_create_from_file(model_path, &model_ptr, 0);
   if (status != gptoss_status_success) {
     state.SkipWithError(
         std::format("failed to load model from file {}", model_path));
