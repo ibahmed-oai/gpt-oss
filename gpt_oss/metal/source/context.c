@@ -132,6 +132,14 @@ enum gptoss_status GPTOSS_ABI gptoss_context_get_num_tokens(
     return gptoss_status_success;
 }
 
+enum gptoss_status GPTOSS_ABI gptoss_context_set_num_tokens(
+    gptoss_context_t context,
+    size_t num_tokens)
+{
+    context->num_tokens = num_tokens;
+    return gptoss_status_success;
+}
+
 enum gptoss_status GPTOSS_ABI gptoss_context_get_max_tokens(
     gptoss_context_t context,
     size_t* max_tokens_out)
@@ -222,7 +230,7 @@ static enum gptoss_status process_tokens(
                 GPTOSS_LOG_ERROR("failed to encode f32_bf16w_rmsnorm kernel launch");
                 return status;
             }
-
+            // ibahmed: Dense matmul -- QKV projection.
             status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
                 command_buffer,
                 &model->f32_bf16w_matmul_fn,
@@ -278,6 +286,7 @@ static enum gptoss_status process_tokens(
             }
 
             if (num_block_output_tokens != 0) {
+                // ibahmed: SDPA -- Attention.
                 status = gptoss_metal_command_buffer_encode_launch_f32_sdpa(
                     command_buffer,
                     &model->f32_sdpa_q8_d64_fn,

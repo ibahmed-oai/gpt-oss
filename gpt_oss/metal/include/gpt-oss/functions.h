@@ -194,6 +194,9 @@ enum gptoss_status GPTOSS_ABI gptoss_context_get_num_tokens(
     gptoss_context_t context,
     size_t* num_tokens_out);
 
+enum gptoss_status GPTOSS_ABI gptoss_context_set_num_tokens(
+    gptoss_context_t context,
+    size_t num_tokens);
 /*
  * Query the maximum number of tokens cached in the Context.
  *
