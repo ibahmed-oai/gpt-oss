@@ -223,10 +223,20 @@ static void end2end_prefill(benchmark::State &state,
   }
   num_tokens = context_length;
   // Prefill
+  status = gptoss_context_reset_num_kv_tokens(context.get());
+  if (status != gptoss_status_success) {
+    state.SkipWithError("failed to reset number of KV tokens");
+    return;
+  }
   for (auto _ : state) {
     status = gptoss_context_process(context.get());
     if (status != gptoss_status_success) {
       state.SkipWithError("failed to prefill Context object");
+      return;
+    }
+    status = gptoss_context_reset_num_kv_tokens(context.get());
+    if (status != gptoss_status_success) {
+      state.SkipWithError("failed to reset number of KV tokens");
       return;
     }
   }
@@ -235,22 +245,37 @@ static void end2end_prefill(benchmark::State &state,
       state.iterations() * num_tokens, benchmark::Counter::kIsRate);
 }
 
+// Decode
 BENCHMARK_CAPTURE(end2end_decode, gpt_oss_20b_decode, "GPT_OSS_20B_PATH")
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 BENCHMARK_CAPTURE(end2end_decode, gpt_oss_120b_decode, "GPT_OSS_120B_PATH")
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_120b_prefill_1024,
+                  "GPT_OSS_120B_PATH", "GPT_OSS_PROMPT_FILE_PATH", 1024)
+    ->UseRealTime()
+    ->Unit(benchmark::kMillisecond);
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_120b_prefill_2048,
+                  "GPT_OSS_120B_PATH", "GPT_OSS_PROMPT_FILE_PATH", 2048)
+    ->UseRealTime()
+    ->Unit(benchmark::kMillisecond);
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_120b_prefill_3072,
+                  "GPT_OSS_120B_PATH", "GPT_OSS_PROMPT_FILE_PATH", 3072)
+    ->UseRealTime()
+    ->Unit(benchmark::kMillisecond);
+
 BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_1024, "GPT_OSS_20B_PATH",
                   "GPT_OSS_PROMPT_FILE_PATH", 1024)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
-BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_3072, "GPT_OSS_20B_PATH",
-                  "GPT_OSS_PROMPT_FILE_PATH", 3072)
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_2048, "GPT_OSS_20B_PATH",
+                  "GPT_OSS_PROMPT_FILE_PATH", 2048)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
-BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_256, "GPT_OSS_20B_PATH",
-                  "GPT_OSS_PROMPT_FILE_PATH", 256)
+BENCHMARK_CAPTURE(end2end_prefill, gpt_oss_20b_prefill_3072, "GPT_OSS_20B_PATH",
+                  "GPT_OSS_PROMPT_FILE_PATH", 3072)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 

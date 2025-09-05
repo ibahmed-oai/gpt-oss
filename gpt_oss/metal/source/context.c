@@ -140,6 +140,13 @@ enum gptoss_status GPTOSS_ABI gptoss_context_set_num_tokens(
     return gptoss_status_success;
 }
 
+enum gptoss_status GPTOSS_ABI gptoss_context_reset_num_kv_tokens(
+    gptoss_context_t context)
+{
+    context->num_kv_tokens = 0;
+    return gptoss_status_success;
+}
+
 enum gptoss_status GPTOSS_ABI gptoss_context_get_max_tokens(
     gptoss_context_t context,
     size_t* max_tokens_out)
