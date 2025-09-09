@@ -21,7 +21,8 @@ extern "C" {
  */
 enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     const char* path,
-    gptoss_model_t* model_out);
+    gptoss_model_t* model_out,
+    size_t max_batch_tokens);
 
 /*
  * Query the Tokenizer object associated with the Model.
@@ -193,6 +194,13 @@ enum gptoss_status GPTOSS_ABI gptoss_context_create(
 enum gptoss_status GPTOSS_ABI gptoss_context_get_num_tokens(
     gptoss_context_t context,
     size_t* num_tokens_out);
+
+enum gptoss_status GPTOSS_ABI gptoss_context_set_num_tokens(
+    gptoss_context_t context,
+    size_t num_tokens);
+
+enum gptoss_status GPTOSS_ABI gptoss_context_reset_num_kv_tokens(
+    gptoss_context_t context);
 
 /*
  * Query the maximum number of tokens cached in the Context.

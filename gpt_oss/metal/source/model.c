@@ -79,7 +79,8 @@ static void prefetch_fd(int fd, size_t offset, size_t size, const char* path) {
 
 enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     const char* path,
-    gptoss_model_t* model_out)
+    gptoss_model_t* model_out,
+    size_t max_batch_tokens)
 {
     *model_out = NULL;
 
@@ -192,7 +193,7 @@ enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     model->yarn_multiplier = model_header.yarn_multiplier;
     model->rmsnorm_epsilon = model_header.rmsnorm_epsilon;
 
-    model->max_batch_tokens = GPTOSS_DEFAULT_BATCH_SIZE;
+    model->max_batch_tokens = max_batch_tokens != 0 ? max_batch_tokens : GPTOSS_DEFAULT_BATCH_SIZE;
 
     struct gptoss_uuid tokenizer_uuid;
     status = read_fd(fd, &tokenizer_uuid, sizeof(tokenizer_uuid), path);
@@ -324,6 +325,18 @@ enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
     if (status != gptoss_status_success) {
         goto cleanup;
     }
+    status = gptoss_metal_function_create(&model->library, "gptoss_f32_bf16w_dense_matmul_qkv", &model->f32_bf16w_dense_matmul_qkv_fn);
+    if (status != gptoss_status_success) {
+        goto cleanup;
+    }
+    status = gptoss_metal_function_create(&model->library, "gptoss_f32_bf16w_dense_matmul_attn_output", &model->f32_bf16w_dense_matmul_attn_output_fn);
+    if (status != gptoss_status_success) {
+        goto cleanup;
+    }
+    status = gptoss_metal_function_create(&model->library, "gptoss_f32_bf16w_dense_matmul_mlp_gate", &model->f32_bf16w_dense_matmul_mlp_gate_fn);
+    if (status != gptoss_status_success) {
+        goto cleanup;
+    }
     status = gptoss_metal_function_create(&model->library, "gptoss_f32_bf16w_unembedding", &model->f32_bf16w_unembedding_fn);
     if (status != gptoss_status_success) {
         goto cleanup;
@@ -353,6 +366,10 @@ enum gptoss_status GPTOSS_ABI gptoss_model_create_from_file(
         goto cleanup;
     }
     status = gptoss_metal_function_create(&model->library, "gptoss_f32_softmax", &model->f32_softmax_fn);
+    if (status != gptoss_status_success) {
+        goto cleanup;
+    }
+    status = gptoss_metal_function_create(&model->library, "gptoss_f32_sample", &model->f32_sample_fn);
     if (status != gptoss_status_success) {
         goto cleanup;
     }
@@ -487,6 +504,9 @@ enum gptoss_status GPTOSS_ABI gptoss_model_release(
             gptoss_metal_function_release(&model->bf16_f32_embeddings_fn);
             gptoss_metal_function_release(&model->f32_bf16w_rmsnorm_fn);
             gptoss_metal_function_release(&model->f32_bf16w_matmul_fn);
+            gptoss_metal_function_release(&model->f32_bf16w_dense_matmul_qkv_fn);
+            gptoss_metal_function_release(&model->f32_bf16w_dense_matmul_attn_output_fn);
+            gptoss_metal_function_release(&model->f32_bf16w_dense_matmul_mlp_gate_fn);
             gptoss_metal_function_release(&model->f32_bf16w_unembedding_fn);
             gptoss_metal_function_release(&model->f32_rope_fn);
             gptoss_metal_function_release(&model->f32_mf4w_moe_matmul_swiglu_fn);
@@ -495,6 +515,7 @@ enum gptoss_status GPTOSS_ABI gptoss_model_release(
             gptoss_metal_function_release(&model->f32_topk_softmax_e32_k4_fn);
             gptoss_metal_function_release(&model->f32_topk_softmax_e128_k4_fn);
             gptoss_metal_function_release(&model->f32_softmax_fn);
+            gptoss_metal_function_release(&model->f32_sample_fn);
             gptoss_metal_function_release(&model->f32_sdpa_q8_d64_fn);
             gptoss_metal_library_release(&model->library);
 

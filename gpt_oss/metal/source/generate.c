@@ -200,7 +200,7 @@ int main(int argc, char *argv[]) {
     struct options options = parse_options(argc, argv);
 
     const uint64_t load_start_time = mach_continuous_time();
-    status = gptoss_model_create_from_file(options.model, &model);
+    status = gptoss_model_create_from_file(options.model, &model, 0);
     if (status != gptoss_status_success) {
         fprintf(stderr, "Error: failed to load model from file %s\n", options.model);
         goto error;

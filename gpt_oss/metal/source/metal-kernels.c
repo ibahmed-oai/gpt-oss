@@ -47,7 +47,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_u32_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "u32_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_fill_random(
@@ -95,7 +95,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_fill_random(
@@ -143,7 +143,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_fill_random(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         1, &output_buffer, &output_offset,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "bf16_fill_random");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_mf4_f32_convert(
@@ -184,7 +184,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_mf4_f32_convert(
         num_threadgroups, 1, 1,
         sizeof(args), &args,
         3, (const struct gptoss_metal_buffer *[]) {block_buffer, scale_buffer, output_buffer}, NULL,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "mf4_f32_convert");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_f32_embeddings(
@@ -227,7 +227,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_bf16_f32_embeddings
         3,
         (const struct gptoss_metal_buffer *[]) {token_buffer, weight_buffer, output_buffer},
         (const size_t[]) {token_offset, weight_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "bf16_f32_embeddings");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
@@ -274,8 +274,142 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
         3,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_rmsnorm");
 }
+
+enum gptoss_status _gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_impl(
+    const struct gptoss_metal_command_buffer *command_buffer,
+    const struct gptoss_metal_function *f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer *input_buffer,
+    size_t input_offset, const struct gptoss_metal_buffer *weight_buffer,
+    size_t weight_offset, const struct gptoss_metal_buffer *bias_buffer,
+    size_t bias_offset, const struct gptoss_metal_buffer *output_buffer,
+    size_t output_offset, uint32_t num_tokens, uint32_t num_cols, uint32_t num_rows, uint32_t Bm, uint32_t Bn, uint32_t Bk, uint32_t Sg_Bm, uint32_t Sg_Bn, char* label) {
+    
+    if (command_buffer->object == NULL || f32_bf16w_dense_matmul_fn->pipeline_state_object == NULL) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: invalid command buffer or pipeline state object");
+        return gptoss_status_invalid_state;
+    }
+
+    if (num_cols % 8 != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: number of columns (%" PRIu32 ") is not divisible by 8",
+            num_cols);
+        return gptoss_status_invalid_argument;
+    }
+    if (num_rows % 8 != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: number of rows (%" PRIu32 ") is not divisible by 8",
+            num_rows);
+        return gptoss_status_invalid_argument;
+    }
+    if (num_tokens % 8 != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: number of tokens (%" PRIu32 ") is not divisible by 8",
+            num_tokens);
+        return gptoss_status_invalid_argument;
+    }
+
+    const struct gptoss_dense_matmul_args args = {
+        .m = num_tokens,
+        .n = num_rows,
+        .k = num_cols,
+    };
+    const size_t threads_per_simdgroup = f32_bf16w_dense_matmul_fn->simdgroup_threads;
+    const uint32_t m = args.m;
+    const uint32_t n = args.n;
+    const uint32_t k = args.k;
+    if (Bm % Sg_Bm != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: Bm (%" PRIu32 ") is not divisible by Sg_Bm (%" PRIu32 ")",
+            Bm, Sg_Bm);
+        return gptoss_status_invalid_argument;
+    }
+    if (Bn % Sg_Bn != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: Bn (%" PRIu32 ") is not divisible by Sg_Bn (%" PRIu32 ")",
+            Bn, Sg_Bn);
+        return gptoss_status_invalid_argument;
+    }
+    assert (threads_per_simdgroup == -1);
+    const size_t threadgroup_size_x = (Bm / Sg_Bm) * (Bn / Sg_Bn) * threads_per_simdgroup;
+    const size_t threadgroup_size_y = 1;
+    const size_t threadgroup_size_z = 1;
+    const size_t total_threadgroup_size = threadgroup_size_x * threadgroup_size_y * threadgroup_size_z;
+    if (total_threadgroup_size > f32_bf16w_dense_matmul_fn->max_threadgroup_threads) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: total threadgroup size (%zu) exceeds supported maximum (%zu)",
+            total_threadgroup_size, f32_bf16w_dense_matmul_fn->max_threadgroup_threads);
+        return gptoss_status_invalid_argument;
+    }
+    if (m % Bm != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: m (%" PRIu32 ") is not divisible by Bm (%" PRIu32 ")",
+            m, Bm);
+        return gptoss_status_invalid_argument;
+    }
+    if (n % Bn != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: n (%" PRIu32 ") is not divisible by Bn (%" PRIu32 ")",
+            n, Bn);
+        return gptoss_status_invalid_argument;
+    }
+    if (k % Bk != 0) {
+        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch: k (%" PRIu32 ") is not divisible by Bk (%" PRIu32 ")",
+            k, Bk);
+        return gptoss_status_invalid_argument;
+    }
+    const size_t grid_x = n / Bn;
+    const size_t grid_y = m / Bm;
+    const size_t grid_z = 1;
+    return gptoss_metal_command_buffer_encode_launch_kernel(
+        command_buffer, f32_bf16w_dense_matmul_fn,
+        threadgroup_size_x, threadgroup_size_y, threadgroup_size_z,
+        grid_x, grid_y, grid_z,
+        sizeof(args), &args,
+        4,
+        (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, bias_buffer, output_buffer},
+        (const size_t[]) {input_offset, weight_offset, bias_offset, output_offset},
+        /*threadgroup_buffer_size=*/0, label);
+        return gptoss_status_success;
+}
+
+enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_qkv(
+    const struct gptoss_metal_command_buffer *command_buffer,
+    const struct gptoss_metal_function *f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer *input_buffer,
+    size_t input_offset, const struct gptoss_metal_buffer *weight_buffer,
+    size_t weight_offset, const struct gptoss_metal_buffer *bias_buffer,
+    size_t bias_offset, const struct gptoss_metal_buffer *output_buffer,
+    size_t output_offset, uint32_t num_tokens, uint32_t num_cols,
+    uint32_t num_rows) {
+    return _gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_impl(command_buffer, 
+        f32_bf16w_dense_matmul_fn, input_buffer, input_offset, weight_buffer, weight_offset,
+        bias_buffer, bias_offset, output_buffer, output_offset, num_tokens, num_cols, num_rows,
+        QKV_Bm, QKV_Bn, QKV_Bk, QKV_Sg_Bm, QKV_Sg_Bn, "f32_bf16w_dense_matmul_qkv");
+}
+
+enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_attn_output(
+    const struct gptoss_metal_command_buffer *command_buffer,
+    const struct gptoss_metal_function *f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer *input_buffer, size_t input_offset,
+    const struct gptoss_metal_buffer *weight_buffer, size_t weight_offset,
+    const struct gptoss_metal_buffer *bias_buffer, size_t bias_offset,
+    const struct gptoss_metal_buffer *output_buffer, size_t output_offset,
+    uint32_t num_tokens, uint32_t num_cols, uint32_t num_rows) {
+    return _gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_impl(command_buffer, 
+        f32_bf16w_dense_matmul_fn, input_buffer, input_offset, weight_buffer, weight_offset,
+        bias_buffer, bias_offset, output_buffer, output_offset, num_tokens, num_cols, num_rows,
+        ATTN_OUTPUT_Bm, ATTN_OUTPUT_Bn, ATTN_OUTPUT_Bk, ATTN_OUTPUT_Sg_Bm, ATTN_OUTPUT_Sg_Bn, "f32_bf16w_dense_matmul_attn_output");
+}
+
+enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_mlp_gate(
+    const struct gptoss_metal_command_buffer *command_buffer,
+    const struct gptoss_metal_function *f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer *input_buffer, size_t input_offset,
+    const struct gptoss_metal_buffer *weight_buffer, size_t weight_offset,
+    const struct gptoss_metal_buffer *bias_buffer, size_t bias_offset,
+    const struct gptoss_metal_buffer *output_buffer, size_t output_offset,
+    uint32_t num_tokens, uint32_t num_cols, uint32_t num_rows) {
+    return _gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_impl(command_buffer, 
+        f32_bf16w_dense_matmul_fn, input_buffer, input_offset, weight_buffer, weight_offset,
+        bias_buffer, bias_offset, output_buffer, output_offset, num_tokens, num_cols, num_rows,
+        MLP_GATE_Bm, MLP_GATE_Bn, MLP_GATE_Bk, MLP_GATE_Sg_Bm, MLP_GATE_Sg_Bn, "f32_bf16w_dense_matmul_mlp_gate");
+}
+
+
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
     const struct gptoss_metal_command_buffer* command_buffer,
@@ -332,7 +466,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_matmul");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_add(
@@ -390,7 +524,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_ad
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, weight_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_matmul_add");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_unembedding(
@@ -446,7 +580,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_unembeddi
         4,
         (const struct gptoss_metal_buffer *[]) {input_buffer, weight_buffer, output_buffer, argmax_buffer},
         (const size_t[]) {input_offset, weight_offset, output_offset, argmax_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_bf16w_unembedding");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul_swiglu(
@@ -470,7 +604,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows)
+    uint32_t num_rows, char* label)
 {
     if (command_buffer->object == NULL || f32_mf4w_moe_matmul_swiglu_fn->pipeline_state_object == NULL) {
         GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul_swiglu kernel launch: invalid command buffer or pipeline state object");
@@ -520,7 +654,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
         6,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, weight_block_buffer, weight_scale_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, weight_block_offset, weight_scale_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, label);
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul(
@@ -543,7 +677,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
     uint32_t num_tokens,
     uint32_t num_active_experts,
     uint32_t num_cols,
-    uint32_t num_rows)
+    uint32_t num_rows, char* label)
 {
     if (command_buffer->object == NULL || f32_mf4w_moe_matmul_fn->pipeline_state_object == NULL) {
         GPTOSS_LOG_ERROR("failed to encode f32_mf4w_moe_matmul kernel launch: invalid command buffer or pipeline state object");
@@ -592,7 +726,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_mf4w_moe_matmul
         6,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, weight_block_buffer, weight_scale_buffer, bias_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, weight_block_offset, weight_scale_offset, bias_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, label);
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_rope(
@@ -643,7 +777,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_rope(
         num_qk_heads / num_simdgroups, num_tokens, 1,
         sizeof(args), &args,
         1, (const struct gptoss_metal_buffer *[]) {activations_buffer}, NULL,
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_rope");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_accumulate(
@@ -693,7 +827,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_accumulate(
         3,
         (const struct gptoss_metal_buffer *[]) {input_buffer, expert_buffer, output_buffer},
         (const size_t[]) {input_offset, expert_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_accumulate");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_topk(
@@ -729,7 +863,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_topk(
         2,
         (const struct gptoss_metal_buffer *[]) {input_buffer, output_buffer},
         (const size_t[]) {input_offset, output_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_topk");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sdpa(
@@ -786,7 +920,7 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sdpa(
         5,
         (const struct gptoss_metal_buffer *[]) {q_buffer, k_buffer, v_buffer, s_buffer, output_buffer},
         (const size_t[]) {q_offset, k_offset, v_offset, s_offset, output_offset},
-        /*threadgroup_buffer_size=*/half_threadgroup_size * 8 * 4 * sizeof(float));
+        /*threadgroup_buffer_size=*/half_threadgroup_size * 8 * 4 * sizeof(float), "f32_sdpa");
 }
 
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_softmax(
@@ -834,5 +968,58 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_softmax(
         4,
         (const struct gptoss_metal_buffer *[]) {score_buffer, argmax_buffer, prob_buffer, sum_buffer},
         (const size_t[]) {score_offset, argmax_offset, prob_offset, sum_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_softmax");
+}
+
+enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sample(
+    const struct gptoss_metal_command_buffer* command_buffer,
+    const struct gptoss_metal_function* f32_sample_fn,
+    size_t min_threadgroup_size,
+    const struct gptoss_metal_buffer* prob_buffer,
+    size_t prob_offset,
+    const struct gptoss_metal_buffer* sum_buffer,
+    size_t sum_offset,
+    const struct gptoss_metal_buffer* prediction_buffer,
+    size_t prediction_offset,
+    uint64_t rng_seed,
+    uint32_t num_blocks,
+    uint32_t num_channels,
+    uint32_t num_channels_per_block,
+    uint32_t token_offset)
+{
+    if (command_buffer->object == NULL || f32_sample_fn->pipeline_state_object == NULL) {
+        return gptoss_status_invalid_state;
+    }
+
+    if (min_threadgroup_size > f32_sample_fn->max_threadgroup_threads) {
+        return gptoss_status_invalid_argument;
+    }
+
+    if (min_threadgroup_size % f32_sample_fn->simdgroup_threads != 0) {
+        return gptoss_status_invalid_argument;
+    }
+
+    if (num_blocks > f32_sample_fn->max_threadgroup_threads) {
+        return gptoss_status_invalid_argument;
+    }
+
+    const struct gptoss_sample_args args = {
+        .seed = rng_seed,
+        .token_offset = token_offset,
+        .num_blocks = num_blocks,
+        .num_dims = num_channels,
+        .num_dims_per_block = num_channels_per_block,
+    };
+
+    const size_t threadgroup_size = math_max(min_threadgroup_size,
+        math_round_up_po2(num_blocks, f32_sample_fn->simdgroup_threads));
+    return gptoss_metal_command_buffer_encode_launch_kernel(
+        command_buffer, f32_sample_fn,
+        threadgroup_size, 1, 1,
+        1, 1, 1,
+        sizeof(args), &args,
+        3,
+        (const struct gptoss_metal_buffer *[]) {prob_buffer, sum_buffer, prediction_buffer},
+        (const size_t[]) {prob_offset, sum_offset, prediction_offset},
+        /*threadgroup_buffer_size=*/0, "f32_sample");
 }

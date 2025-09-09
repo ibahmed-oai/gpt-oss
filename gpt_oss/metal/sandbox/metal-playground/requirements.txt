@@ -1,0 +1,5 @@
+pyobjc
+pyobjc-framework-Metal
+pyobjc-framework-MetalKit
+numpy
+torch
