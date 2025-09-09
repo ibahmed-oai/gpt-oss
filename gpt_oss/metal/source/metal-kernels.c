@@ -1021,5 +1021,5 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_sample(
         3,
         (const struct gptoss_metal_buffer *[]) {prob_buffer, sum_buffer, prediction_buffer},
         (const size_t[]) {prob_offset, sum_offset, prediction_offset},
-        /*threadgroup_buffer_size=*/0);
+        /*threadgroup_buffer_size=*/0, "f32_sample");
 }

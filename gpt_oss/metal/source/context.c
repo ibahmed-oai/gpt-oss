@@ -242,7 +242,7 @@ static enum gptoss_status process_tokens(
             // ibahmed: Dense matmul -- QKV projection.
             if ((input_batch_size >= dense_matmul_token_counter_threshold)) {
                 status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_qkv(
-                    &command_buffer,
+                    command_buffer,
                     &model->f32_bf16w_dense_matmul_qkv_fn,
                     &context->rmsnorm_activation_buffer,
                     /*input_offset=*/0,
@@ -257,11 +257,11 @@ static enum gptoss_status process_tokens(
                     /*num_rows=*/attn_qkv_dim);
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch");
-                    goto cleanup;
+                    return status;
                 }
             } else {
             status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
-                &command_buffer,
+                command_buffer,
                 &model->f32_bf16w_matmul_fn,
                 /*threadgroup_size=*/256,
                 &context->rmsnorm_activation_buffer,
@@ -356,11 +356,11 @@ static enum gptoss_status process_tokens(
                         /*num_rows=*/model->embedding_dim);
                     if (status != gptoss_status_success) {
                         GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_attn_output kernel launch");
-                        goto cleanup;
+                        return status;
                     }
                 } else {
                 status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_add(
-                    &command_buffer,
+                    command_buffer,
                     &model->f32_bf16w_matmul_fn,
                     /*threadgroup_size=*/256,
                     &context->sdpa_activation_buffer,
@@ -376,7 +376,7 @@ static enum gptoss_status process_tokens(
                     /*num_rows=*/model->embedding_dim); // -> N
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul_add kernel launch");
-                        goto cleanup;
+                        return status;
                     }
                 }
                 status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
@@ -398,7 +398,7 @@ static enum gptoss_status process_tokens(
                 // ibahmed: Dense matmul -- MoE gating.
                 if (input_batch_size >= (dense_matmul_token_counter_threshold)) {
                     status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_mlp_gate(
-                        &command_buffer,
+                        command_buffer,
                         &model->f32_bf16w_dense_matmul_mlp_gate_fn,
                         &context->rmsnorm_activation_buffer,
                         /*input_offset=*/0,
@@ -413,11 +413,11 @@ static enum gptoss_status process_tokens(
                         model->num_experts);
                     if (status != gptoss_status_success) {
                         GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_mlp_gate kernel launch");
-                        goto cleanup;
+                        return status;
                     }
                 } else {
                     status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
-                        &command_buffer,
+                        command_buffer,
                         &model->f32_bf16w_matmul_fn,
                         /*threadgroup_size=*/256,
                         &context->rmsnorm_activation_buffer,
@@ -433,7 +433,7 @@ static enum gptoss_status process_tokens(
                         /*num_rows=*/model->num_experts);
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul kernel launch");
-                        goto cleanup;
+                        return status;
                     }
                 }
 
