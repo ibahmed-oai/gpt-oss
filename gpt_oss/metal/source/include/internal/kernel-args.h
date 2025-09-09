@@ -5,6 +5,27 @@
 #endif
 
 // TODO(ibahmed): specalize using metal function constants.
+// #define GPT_OSS_120b
+
+#if defined(GPT_OSS_120b)
+#define QKV_Bm 64
+#define QKV_Bn 32
+#define QKV_Bk 64
+#define QKV_Sg_Bm 32
+#define QKV_Sg_Bn 16
+
+#define ATTN_OUTPUT_Bm 16
+#define ATTN_OUTPUT_Bn 64
+#define ATTN_OUTPUT_Bk 64
+#define ATTN_OUTPUT_Sg_Bm 16
+#define ATTN_OUTPUT_Sg_Bn 16
+
+#define MLP_GATE_Bm 32
+#define MLP_GATE_Bn 64
+#define MLP_GATE_Bk 64
+#define MLP_GATE_Sg_Bm 16
+#define MLP_GATE_Sg_Bn 16
+#else
 #define QKV_Bm 64
 #define QKV_Bn 64
 #define QKV_Bk 32
@@ -22,7 +43,7 @@
 #define MLP_GATE_Bk 64
 #define MLP_GATE_Sg_Bm 16
 #define MLP_GATE_Sg_Bn 16
-
+#endif
 struct gptoss_expert_prediction {
   uint32_t expert_id;
   float score;
