@@ -171,7 +171,7 @@ static void end2end_prefill(benchmark::State &state,
 
   gptoss_model_t model_ptr = nullptr;
   gptoss_status status =
-      gptoss_model_create_from_file(model_path, &model_ptr, 0);
+      gptoss_model_create_from_file(model_path, &model_ptr, 1024);
   if (status != gptoss_status_success) {
     state.SkipWithError(
         std::format("failed to load model from file {}", model_path));

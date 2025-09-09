@@ -186,6 +186,7 @@ static enum gptoss_status process_tokens(
     assert(num_input_tokens <= context->max_batch_tokens);
     assert(num_output_tokens <= context->max_batch_tokens);
     assert(num_input_tokens >= num_output_tokens);
+    const size_t dense_matmul_token_counter_threshold = 256;
 
     enum gptoss_status status = gptoss_status_success;
     const struct gptoss_model* model = context->model;
@@ -197,7 +198,7 @@ static enum gptoss_status process_tokens(
         input_batch_start < input_tokens_end;
         input_batch_start += model->max_batch_tokens)
     {
-        size_t chunk_count = (input_batch_start - input_tokens_offset) / model->max_batch_tokens;
+        const size_t chunk_count = (input_batch_start - input_tokens_offset) / model->max_batch_tokens;
         const size_t input_batch_size = math_min(model->max_batch_tokens, input_tokens_end - input_batch_start);
         const size_t input_batch_end = input_batch_start + input_batch_size;
         const size_t output_batch_size = math_sub_sat(num_output_tokens, input_tokens_end - input_batch_end);
@@ -239,8 +240,28 @@ static enum gptoss_status process_tokens(
                 return status;
             }
             // ibahmed: Dense matmul -- QKV projection.
+            if ((input_batch_size >= dense_matmul_token_counter_threshold)) {
+                status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_qkv(
+                    &command_buffer,
+                    &model->f32_bf16w_dense_matmul_qkv_fn,
+                    &context->rmsnorm_activation_buffer,
+                    /*input_offset=*/0,
+                    &model->shared_weight_buffer,
+                    /*weight_offset=*/model->attn_qkv_weight_offset + model->per_block_shared_weights_size * n,
+                    &model->shared_weight_buffer,
+                    /*bias_offset=*/model->attn_qkv_bias_offset + model->per_block_shared_weights_size * n,
+                    &context->qkv_activation_buffer,
+                    /*output_offset=*/0,
+                    /*num_tokens=*/input_batch_size,
+                    /*num_cols=*/model->embedding_dim,
+                    /*num_rows=*/attn_qkv_dim);
+                if (status != gptoss_status_success) {
+                    GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_qkv kernel launch");
+                    goto cleanup;
+                }
+            } else {
             status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
-                command_buffer,
+                &command_buffer,
                 &model->f32_bf16w_matmul_fn,
                 /*threadgroup_size=*/256,
                 &context->rmsnorm_activation_buffer,
@@ -254,9 +275,10 @@ static enum gptoss_status process_tokens(
                 /*num_tokens=*/input_batch_size,
                 /*num_cols=*/model->embedding_dim,
                 /*num_rows=*/attn_qkv_dim);
-            if (status != gptoss_status_success) {
-                GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul kernel launch");
-                return status;
+                if (status != gptoss_status_success) {
+                    GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul kernel launch");
+                    return status;
+                }
             }
 
             status = gptoss_metal_command_buffer_encode_launch_f32_rope(
@@ -317,8 +339,28 @@ static enum gptoss_status process_tokens(
                     return status;
                 }
 
+                if (input_batch_size >= (dense_matmul_token_counter_threshold)) {
+                    status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_attn_output(
+                        command_buffer,
+                        &model->f32_bf16w_dense_matmul_attn_output_fn,
+                        &context->sdpa_activation_buffer,
+                        /*input_offset=*/0,
+                        &model->shared_weight_buffer,
+                        /*weight_offset=*/model->attn_out_weight_offset + model->per_block_shared_weights_size * n,
+                        &model->shared_weight_buffer,
+                        /*bias_offset=*/model->attn_out_bias_offset + model->per_block_shared_weights_size * n,
+                        &context->residual_activation_buffer,
+                        /*output_offset=*/model->embedding_dim * (input_batch_size - num_block_output_tokens) * sizeof(float),
+                        /*num_tokens=*/num_block_output_tokens,
+                        /*num_cols=*/model->num_heads * model->head_dim,
+                        /*num_rows=*/model->embedding_dim);
+                    if (status != gptoss_status_success) {
+                        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_attn_output kernel launch");
+                        goto cleanup;
+                    }
+                } else {
                 status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_add(
-                    command_buffer,
+                    &command_buffer,
                     &model->f32_bf16w_matmul_fn,
                     /*threadgroup_size=*/256,
                     &context->sdpa_activation_buffer,
@@ -329,14 +371,14 @@ static enum gptoss_status process_tokens(
                     /*bias_offset=*/model->attn_out_bias_offset + model->per_block_shared_weights_size * n,
                     &context->residual_activation_buffer,
                     /*output_offset=*/model->embedding_dim * (input_batch_size - num_block_output_tokens) * sizeof(float),
-                    /*num_tokens=*/num_block_output_tokens,
-                    /*num_cols=*/model->num_heads * model->head_dim,
-                    /*num_rows=*/model->embedding_dim);
+                    /*num_tokens=*/num_block_output_tokens, // -> M
+                    /*num_cols=*/model->num_heads * model->head_dim, // -> K
+                    /*num_rows=*/model->embedding_dim); // -> N
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul_add kernel launch");
-                    return status;
+                        goto cleanup;
+                    }
                 }
-
                 status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_rmsnorm(
                     command_buffer,
                     &model->f32_bf16w_rmsnorm_fn,
@@ -353,25 +395,46 @@ static enum gptoss_status process_tokens(
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_rmsnorm kernel launch");
                     return status;
                 }
-
-                status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
-                    command_buffer,
-                    &model->f32_bf16w_matmul_fn,
-                    /*threadgroup_size=*/256,
-                    &context->rmsnorm_activation_buffer,
-                    /*input_offset=*/0,
-                    &model->shared_weight_buffer,
-                    /*weight_offset=*/model->mlp_gate_weight_offset + model->per_block_shared_weights_size * n,
-                    &model->shared_weight_buffer,
-                    /*bias_offset=*/model->mlp_gate_bias_offset + model->per_block_shared_weights_size * n,
-                    &context->gate_activation_buffer,
-                    /*output_offset=*/0,
-                    /*num_tokens=*/num_block_output_tokens,
-                    /*num_cols=*/model->embedding_dim,
-                    /*num_rows=*/model->num_experts);
+                // ibahmed: Dense matmul -- MoE gating.
+                if (input_batch_size >= (dense_matmul_token_counter_threshold)) {
+                    status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_mlp_gate(
+                        &command_buffer,
+                        &model->f32_bf16w_dense_matmul_mlp_gate_fn,
+                        &context->rmsnorm_activation_buffer,
+                        /*input_offset=*/0,
+                        &model->shared_weight_buffer,
+                        /*weight_offset=*/model->mlp_gate_weight_offset + model->per_block_shared_weights_size * n,
+                        &model->shared_weight_buffer,
+                        /*bias_offset=*/model->mlp_gate_bias_offset + model->per_block_shared_weights_size * n,
+                        &context->gate_activation_buffer,
+                        /*output_offset=*/0,
+                        num_block_output_tokens,
+                        model->embedding_dim,
+                        model->num_experts);
+                    if (status != gptoss_status_success) {
+                        GPTOSS_LOG_ERROR("failed to encode f32_bf16w_dense_matmul_mlp_gate kernel launch");
+                        goto cleanup;
+                    }
+                } else {
+                    status = gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul(
+                        &command_buffer,
+                        &model->f32_bf16w_matmul_fn,
+                        /*threadgroup_size=*/256,
+                        &context->rmsnorm_activation_buffer,
+                        /*input_offset=*/0,
+                        &model->shared_weight_buffer,
+                        /*weight_offset=*/model->mlp_gate_weight_offset + model->per_block_shared_weights_size * n,
+                        &model->shared_weight_buffer,
+                        /*bias_offset=*/model->mlp_gate_bias_offset + model->per_block_shared_weights_size * n,
+                        &context->gate_activation_buffer,
+                        /*output_offset=*/0,
+                        /*num_tokens=*/num_block_output_tokens,
+                        /*num_cols=*/model->embedding_dim,
+                        /*num_rows=*/model->num_experts);
                 if (status != gptoss_status_success) {
                     GPTOSS_LOG_ERROR("failed to encode f32_bf16w_matmul kernel launch");
-                    return status;
+                        goto cleanup;
+                    }
                 }
 
                 const char* kernel_name = NULL;

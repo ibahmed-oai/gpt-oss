@@ -3,135 +3,347 @@
 #include <metal_integer>
 #include <metal_math>
 #include <metal_simdgroup>
+#include <metal_stdlib>
 
 #include <internal/kernel-args.h>
-
 #pragma METAL fp math_mode(safe)
 #pragma METAL fp contract(off)
 
+// // Function constants used by the dense matmul kernel..
+// // Chunk of output assigned to a threadgroup.
+// constant uint Bm      [[function_constant(0)]];..
+// constant uint Bn      [[function_constant(1)]];
+// constant uint Bk      [[function_constant(2)]];
+// // Chunk of output assigned to a simdgroup.
+// constant uint Sg_Bm   [[function_constant(3)]];
+// constant uint Sg_Bn   [[function_constant(4)]];
+// constant uint THREADS_PER_TG [[function_constant(5)]];
+// constant bool RHS_TRANSPOSE  [[function_constant(6)]];
 
-// Each simdgroup reduces all channels of the input and computes a single channel of the output
+// Each simdgroup reduces all channels of the input and computes a single
+// channel of the output
 // + Efficient synchronization
 // + Sequential memory access within a warp
-// Each threadgroup computes (simdgroups_per_threadgroup) consecutive output channels
+// Each threadgroup computes (simdgroups_per_threadgroup) consecutive output
+// channels
 // + Reuse input vector from threadgroup memory
 // + Avoid synchronization across warps when doing reduction
 
-kernel void gptoss_f32_bf16w_matmul(
-    constant gptoss_matmul_args& args [[ buffer(0) ]],
-    const device float4* input [[ buffer(1) ]],
-    const device bfloat4* weight [[ buffer(2) ]],
-    const device bfloat* bias [[ buffer(3) ]],
-    device float* output [[ buffer(4) ]],
-    uint2 gid [[threadgroup_position_in_grid]],
-    uint simdgroup_tid [[thread_index_in_simdgroup]],
-    uint simdgroup_idx [[simdgroup_index_in_threadgroup]],
-    uint num_simdgroups [[simdgroups_per_threadgroup]])
-{
-    const uint simdgroup_size = 32;
+kernel void
+gptoss_f32_bf16w_matmul(constant gptoss_matmul_args &args [[buffer(0)]],
+                        const device float4 *input [[buffer(1)]],
+                        const device bfloat4 *weight [[buffer(2)]],
+                        const device bfloat *bias [[buffer(3)]],
+                        device float *output [[buffer(4)]],
+                        uint2 gid [[threadgroup_position_in_grid]],
+                        uint simdgroup_tid [[thread_index_in_simdgroup]],
+                        uint simdgroup_idx [[simdgroup_index_in_threadgroup]],
+                        uint num_simdgroups [[simdgroups_per_threadgroup]]) {
+  const uint simdgroup_size = 32;
 
-    const uint num_column_vecs = args.num_column_vecs;
-    const uint row = gid.x * num_simdgroups + simdgroup_idx;
+  const uint num_column_vecs = args.num_column_vecs;
+  const uint row = gid.x * num_simdgroups + simdgroup_idx;
 
-    input += gid.y * num_column_vecs + simdgroup_tid;
-    weight += num_column_vecs * row + simdgroup_tid;
-    bias += row;
-    output += gid.y * args.num_rows + row;
+  input += gid.y * num_column_vecs + simdgroup_tid;
+  weight += num_column_vecs * row + simdgroup_tid;
+  bias += row;
+  output += gid.y * args.num_rows + row;
 
-    uint num_iter = (num_column_vecs - simdgroup_tid + (simdgroup_size - 1)) / simdgroup_size;
+  uint num_iter =
+      (num_column_vecs - simdgroup_tid + (simdgroup_size - 1)) / simdgroup_size;
 
-    float4 sum4 = 0.0f;
-    do {
-        const bfloat4 w = *weight;
-        const float4 i = *input;
-        sum4 = metal::fma(static_cast<float4>(w), i, sum4);
+  float4 sum4 = 0.0f;
+  do {
+    const bfloat4 w = *weight;
+    const float4 i = *input;
+    sum4 = metal::fma(static_cast<float4>(w), i, sum4);
 
-        weight += simdgroup_size;
-        input += simdgroup_size;
-    } while (--num_iter != 0);
-    const float2 sum2 = sum4.xy + sum4.zw;
-    float sum = sum2.x + sum2.y;
-    sum = metal::simd_sum(sum);
-    if (metal::simd_is_first()) {
-        sum += static_cast<float>(*bias);
-        if (args.add) {
-            *output += sum;
-        } else {
-            *output = sum;
-        }
+    weight += simdgroup_size;
+    input += simdgroup_size;
+  } while (--num_iter != 0);
+  const float2 sum2 = sum4.xy + sum4.zw;
+  float sum = sum2.x + sum2.y;
+  sum = metal::simd_sum(sum);
+  if (metal::simd_is_first()) {
+    sum += static_cast<float>(*bias);
+    if (args.add) {
+      *output += sum;
+    } else {
+      *output = sum;
     }
+  }
 }
 
 kernel void gptoss_f32_bf16w_unembedding(
-    constant gptoss_unembedding_args& args [[ buffer(0) ]],
-    const device float4* input [[ buffer(1) ]],
-    const device bfloat4* weight [[ buffer(2) ]],
-    device float* output [[ buffer(3) ]],
-    device metal::atomic_ulong* argmax [[ buffer(4) ]],
+    constant gptoss_unembedding_args &args [[buffer(0)]],
+    const device float4 *input [[buffer(1)]],
+    const device bfloat4 *weight [[buffer(2)]],
+    device float *output [[buffer(3)]],
+    device metal::atomic_ulong *argmax [[buffer(4)]],
     uint2 gid [[threadgroup_position_in_grid]],
     uint simdgroup_tid [[thread_index_in_simdgroup]],
     uint simdgroup_idx [[simdgroup_index_in_threadgroup]],
-    uint num_simdgroups [[simdgroups_per_threadgroup]])
-{
-    const uint simdgroup_size = 32;
-    threadgroup uint2 threadgroup_buffer[32];
+    uint num_simdgroups [[simdgroups_per_threadgroup]]) {
+  const uint simdgroup_size = 32;
+  threadgroup uint2 threadgroup_buffer[32];
 
-    const uint num_column_vecs = args.num_column_vecs;
-    const uint row_start = gid.x * args.num_rows_per_threadgroup + simdgroup_idx;
-    const uint row_end = metal::min(gid.x * args.num_rows_per_threadgroup + args.num_rows_per_threadgroup, args.num_rows);
-    const uint num_iter = (num_column_vecs - simdgroup_tid + (simdgroup_size - 1)) / simdgroup_size;
+  const uint num_column_vecs = args.num_column_vecs;
+  const uint row_start = gid.x * args.num_rows_per_threadgroup + simdgroup_idx;
+  const uint row_end = metal::min(gid.x * args.num_rows_per_threadgroup +
+                                      args.num_rows_per_threadgroup,
+                                  args.num_rows);
+  const uint num_iter =
+      (num_column_vecs - simdgroup_tid + (simdgroup_size - 1)) / simdgroup_size;
 
-    input += gid.y * num_column_vecs + simdgroup_tid;
-    weight += num_column_vecs * row_start + simdgroup_tid;
-    output += gid.y * args.num_rows + row_start;
+  input += gid.y * num_column_vecs + simdgroup_tid;
+  weight += num_column_vecs * row_start + simdgroup_tid;
+  output += gid.y * args.num_rows + row_start;
 
-    uint2 row_sum{0xFFFFFFFFul, 0xFFFFFFFFul};
-    for (uint row = row_start; row < row_end; row += num_simdgroups) {
-        uint n = num_iter;
+  uint2 row_sum{0xFFFFFFFFul, 0xFFFFFFFFul};
+  for (uint row = row_start; row < row_end; row += num_simdgroups) {
+    uint n = num_iter;
 
-        float4 sum4 = 0.0f;
-        do {
-            const bfloat4 w = *weight;
-            const float4 i = *input;
+    float4 sum4 = 0.0f;
+    do {
+      const bfloat4 w = *weight;
+      const float4 i = *input;
 
-            sum4 = metal::fma(static_cast<float4>(w), i, sum4);
+      sum4 = metal::fma(static_cast<float4>(w), i, sum4);
 
-            weight += simdgroup_size;
-            input += simdgroup_size;
-        } while (--n != 0);
-        input -= num_iter * simdgroup_size;
-        weight -= num_iter * simdgroup_size;
+      weight += simdgroup_size;
+      input += simdgroup_size;
+    } while (--n != 0);
+    input -= num_iter * simdgroup_size;
+    weight -= num_iter * simdgroup_size;
 
-        const float2 sum2 = sum4.xy + sum4.zw;
-        float sum = sum2.x + sum2.y;
-        sum = metal::simd_sum(sum);
-        uint sum_bits = as_type<uint>(sum);
-        if (static_cast<int>(sum_bits) >= 0) {
-            sum_bits ^= 0x7FFFFFFFu;
-        }
-        row_sum = as_type<uint2>(metal::min(as_type<ulong>(row_sum), as_type<ulong>(uint2{row, sum_bits})));
-        if (metal::simd_is_first()) {
-            *output = sum;
-        }
-
-        weight += num_column_vecs * num_simdgroups;
-        output += num_simdgroups;
+    const float2 sum2 = sum4.xy + sum4.zw;
+    float sum = sum2.x + sum2.y;
+    sum = metal::simd_sum(sum);
+    uint sum_bits = as_type<uint>(sum);
+    if (static_cast<int>(sum_bits) >= 0) {
+      sum_bits ^= 0x7FFFFFFFu;
     }
+    row_sum = as_type<uint2>(metal::min(as_type<ulong>(row_sum),
+                                        as_type<ulong>(uint2{row, sum_bits})));
     if (metal::simd_is_first()) {
-        threadgroup_buffer[simdgroup_idx] = row_sum;
+      *output = sum;
     }
-    metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
-    if (simdgroup_idx == 0) {
-        // Min-Reduce threadgroup_buffer
-        if (simdgroup_tid < num_simdgroups) {
-            row_sum = threadgroup_buffer[simdgroup_tid];
-        }
-        const uint sum_bits = row_sum.y;
-        const uint sum_bits_min = metal::simd_min(sum_bits);
-        const uint row_min = metal::simd_min(sum_bits == sum_bits_min ? row_sum.x : 0xFFFFFFFFu);
-        if (metal::simd_is_first()) {
-            const uint2 threadgroup_output{row_min, sum_bits_min};
-            atomic_min_explicit(&argmax[gid.y], as_type<ulong>(threadgroup_output), metal::memory_order_relaxed);
-        }
+
+    weight += num_column_vecs * num_simdgroups;
+    output += num_simdgroups;
+  }
+  if (metal::simd_is_first()) {
+    threadgroup_buffer[simdgroup_idx] = row_sum;
+  }
+  metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
+  if (simdgroup_idx == 0) {
+    // Min-Reduce threadgroup_buffer
+    if (simdgroup_tid < num_simdgroups) {
+      row_sum = threadgroup_buffer[simdgroup_tid];
     }
+    const uint sum_bits = row_sum.y;
+    const uint sum_bits_min = metal::simd_min(sum_bits);
+    const uint row_min =
+        metal::simd_min(sum_bits == sum_bits_min ? row_sum.x : 0xFFFFFFFFu);
+    if (metal::simd_is_first()) {
+      const uint2 threadgroup_output{row_min, sum_bits_min};
+      atomic_min_explicit(&argmax[gid.y], as_type<ulong>(threadgroup_output),
+                          metal::memory_order_relaxed);
+    }
+  }
+}
+
+// Current constraints for the dense matmul kernel:
+//  1- All B* and Sg_* are a multiple of 8.
+//  2- Bm is divisible by Sg_n and Bn is divisible by Sg_n.
+//  3- M, N and K are all divisible by 8..
+template <uint Bm, uint Bn, uint Bk, uint Sg_Bm, uint Sg_Bn, uint add = 0>
+inline void _gptoss_f32_bf16w_dense_matmul_impl(
+    constant gptoss_dense_matmul_args &args, const device float *lhs,
+    const device bfloat *rhs, const device bfloat *__restrict__ bias,
+    device float *out, threadgroup float *scratch, threadgroup float *bias_tile,
+    uint sg_id, uint sg_count_per_tg, uint3 gid, uint3 tg_id, uint3 local_tid,
+    uint3 threadgroup_size) {
+
+  // The kernel assumes that M, K, and N are divisible by 8.
+  const uint M = args.m;
+  const uint K = args.k;
+  const uint N = args.n;
+  // constexpr uint Bm = QKV_Bm;
+  // constexpr uint Bn = QKV_Bn;
+  // constexpr uint Bk = QKV_Bk;
+  // constexpr uint Sg_Bm = QKV_Sg_Bm;
+  // constexpr uint Sg_Bn = QKV_Sg_Bn;
+  static_assert((Bm % 8u) == 0u, "Bm must be a multiple of 8");
+  static_assert((Bn % 8u) == 0u, "Bn must be a multiple of 8");
+  static_assert((Bk % 8u) == 0u, "Bk must be a multiple of 8");
+  static_assert((Sg_Bm % 8u) == 0u, "Bk must be a multiple of 8");
+  static_assert((Sg_Bn % 8u) == 0u, "Bk must be a multiple of 8");
+  static_assert((Bn % Sg_Bn) == 0u, "Bn must be a multiple of Sg_Bn");
+  static_assert((Bm % Sg_Bm) == 0u, "Bm must be a multiple of Sg_Bm");
+
+  // Get row and col tg.
+  const uint row_tg = tg_id.y;
+  const uint col_tg = tg_id.x;
+  // Get row and col local tid.
+  const uint row_tg_offset = row_tg * Bm;
+  const uint col_tg_offset = col_tg * Bn;
+
+  const uint sg_col_count = Bn / Sg_Bn;
+  const uint row_sg = sg_id / sg_col_count;
+  const uint col_sg = sg_id % sg_col_count;
+
+  const uint row_sg_offset = row_sg * Sg_Bm;
+  const uint col_sg_offset = col_sg * Sg_Bn;
+  constexpr uint temp_result_size = (Sg_Bm / 8) * (Sg_Bn / 8);
+  // Create an array of simdgroup_float8x8 to hold temp results.
+  metal::simdgroup_float8x8 OutTiles[temp_result_size];
+#pragma clang loop unroll(full)
+  for (uint i = 0; i < temp_result_size; i++) {
+    OutTiles[i] = metal::make_filled_simdgroup_matrix<float, 8, 8>(
+        static_cast<float>(0.0));
+  }
+
+  for (uint k_offset = 0; k_offset < K; k_offset += Bk) {
+#pragma clang loop unroll(full)
+    for (uint k = 0; k < Bk; k += 8) {
+#pragma clang loop unroll(full)
+      for (uint m_subtile_ = 0; m_subtile_ < Sg_Bm; m_subtile_ += 8) {
+        // const uint m_subtile = row_sg_offset + m_subtile_;
+        // const uint row_index_in_out_tile = (m_subtile - row_sg_offset) / 8;
+        const uint row_index_in_out_tile = m_subtile_ / 8;
+        metal::simdgroup_float8x8 LHStile;
+        const uint k_id = k + k_offset;
+        const uint row_offset = row_tg_offset + row_sg_offset + m_subtile_;
+        metal::simdgroup_load(LHStile, lhs, K, ulong2(k_id, row_offset));
+        metal::simdgroup_bfloat8x8 RHStile;
+#pragma clang loop unroll(full)
+        for (uint n_subtile_ = 0; n_subtile_ < Sg_Bn; n_subtile_ += 8) {
+          // const uint n_subtile = col_sg_offset + n_subtile_;
+          // const uint col_index_in_out_tile = (n_subtile - col_sg_offset) / 8;
+          const uint col_index_in_out_tile = n_subtile_ / 8;
+          const uint current_index_out_tile =
+              row_index_in_out_tile * (Sg_Bn / 8) + col_index_in_out_tile;
+
+          const uint col_offset = col_tg_offset + col_sg_offset + n_subtile_;
+          // Gets optimized away by the compiler. But need RHS_TRANSPOSE to be a
+          // compile-time constant.
+          // if (QKV_RHS_TRANSPOSE) {
+          simdgroup_load(RHStile, rhs, K, ulong2(k_id, col_offset), true);
+          // } else {
+          //   simdgroup_load(RHStile, rhs, N, ulong2(col_offset, k_id));
+          // }
+          // }
+          simdgroup_multiply_accumulate(OutTiles[current_index_out_tile],
+                                        LHStile, RHStile,
+                                        OutTiles[current_index_out_tile]);
+        }
+      }
+    }
+  }
+  // Epilogue.
+  // threadgroup float scratch[Bm * Bn];
+#pragma clang loop unroll(full)
+  for (uint n_subtile_ = 0; n_subtile_ < Sg_Bn; n_subtile_ += 8) {
+    const uint col_index_in_out_tile = n_subtile_ / 8;
+    const uint local_col_offset = col_sg_offset + n_subtile_;
+#pragma clang loop unroll(full)
+    for (uint m_subtile_ = 0; m_subtile_ < Sg_Bm; m_subtile_ += 8) {
+      const uint row_index_in_out_tile = m_subtile_ / 8;
+      const uint local_row_offset = row_sg_offset + m_subtile_;
+      const uint current_index_out_tile =
+          row_index_in_out_tile * (Sg_Bn / 8) + col_index_in_out_tile;
+      simdgroup_store(OutTiles[current_index_out_tile], scratch, Bn,
+                      ulong2(local_col_offset, local_row_offset));
+    }
+  }
+  // threadgroup float bias_tile[Bn];
+  // TODO(ibahmed): vectorize these loads an maybe unroll the loop.
+  const uint thread_count_per_tg =
+      threadgroup_size.x * threadgroup_size.y * threadgroup_size.z;
+  for (uint c_local = local_tid.x; c_local < Bn;
+       c_local += thread_count_per_tg) {
+    const uint c_global = col_tg_offset + c_local;
+    bias_tile[c_local] =
+        (c_global < N) ? static_cast<float>(bias[c_global]) : 0.0f;
+  }
+
+  metal::threadgroup_barrier(metal::mem_flags::mem_threadgroup);
+  // TODO(ibahmed): vectorize these stores and maybe unroll the loop.
+  for (uint idx = local_tid.x; idx < Bm * Bn; idx += thread_count_per_tg) {
+    const uint r = idx / Bn;
+    const uint c = idx % Bn;
+
+    const uint out_row = row_tg_offset + r;
+    const uint out_col = col_tg_offset + c;
+
+    if (out_row < M && out_col < N) {
+      float acc = scratch[idx] + bias_tile[c];
+      if (add) {
+        acc += out[out_row * N + out_col];
+        // acc = acc;
+      }
+      out[out_row * N + out_col] = acc;
+    }
+  }
+}
+kernel void gptoss_f32_bf16w_dense_matmul_qkv(
+    constant gptoss_dense_matmul_args &args [[buffer(0)]],
+    const device float *lhs [[buffer(1)]],
+    const device bfloat *rhs [[buffer(2)]],
+    const device bfloat *__restrict__ bias [[buffer(3)]],
+    device float *out [[buffer(4)]],
+    uint sg_id [[simdgroup_index_in_threadgroup]],
+    uint sg_count_per_tg [[dispatch_simdgroups_per_threadgroup]],
+    uint3 gid [[thread_position_in_grid]],
+    uint3 tg_id [[threadgroup_position_in_grid]],
+    uint3 local_tid [[thread_position_in_threadgroup]],
+    uint3 threadgroup_size [[threads_per_threadgroup]]) {
+  threadgroup float scratch[QKV_Bm * QKV_Bn];
+  threadgroup float bias_tile[QKV_Bn];
+  _gptoss_f32_bf16w_dense_matmul_impl<QKV_Bm, QKV_Bn, QKV_Bk, QKV_Sg_Bm,
+                                      QKV_Sg_Bn>(
+      args, lhs, rhs, bias, out, scratch, bias_tile, sg_id, sg_count_per_tg,
+      gid, tg_id, local_tid, threadgroup_size);
+}
+
+kernel void gptoss_f32_bf16w_dense_matmul_attn_output(
+    constant gptoss_dense_matmul_args &args [[buffer(0)]],
+    const device float *lhs [[buffer(1)]],
+    const device bfloat *rhs [[buffer(2)]],
+    const device bfloat *__restrict__ bias [[buffer(3)]],
+    device float *out [[buffer(4)]],
+    uint sg_id [[simdgroup_index_in_threadgroup]],
+    uint sg_count_per_tg [[dispatch_simdgroups_per_threadgroup]],
+    uint3 gid [[thread_position_in_grid]],
+    uint3 tg_id [[threadgroup_position_in_grid]],
+    uint3 local_tid [[thread_position_in_threadgroup]],
+    uint3 threadgroup_size [[threads_per_threadgroup]]) {
+  threadgroup float scratch[ATTN_OUTPUT_Bm * ATTN_OUTPUT_Bn];
+  threadgroup float bias_tile[ATTN_OUTPUT_Bn];
+  _gptoss_f32_bf16w_dense_matmul_impl<ATTN_OUTPUT_Bm, ATTN_OUTPUT_Bn,
+                                      ATTN_OUTPUT_Bk, ATTN_OUTPUT_Sg_Bm,
+                                      ATTN_OUTPUT_Sg_Bn, /*add=*/1>(
+      args, lhs, rhs, bias, out, scratch, bias_tile, sg_id, sg_count_per_tg,
+      gid, tg_id, local_tid, threadgroup_size);
+}
+
+kernel void gptoss_f32_bf16w_dense_matmul_mlp_gate(
+    constant gptoss_dense_matmul_args &args [[buffer(0)]],
+    const device float *lhs [[buffer(1)]],
+    const device bfloat *rhs [[buffer(2)]],
+    const device bfloat *__restrict__ bias [[buffer(3)]],
+    device float *out [[buffer(4)]],
+    uint sg_id [[simdgroup_index_in_threadgroup]],
+    uint sg_count_per_tg [[dispatch_simdgroups_per_threadgroup]],
+    uint3 gid [[thread_position_in_grid]],
+    uint3 tg_id [[threadgroup_position_in_grid]],
+    uint3 local_tid [[thread_position_in_threadgroup]],
+    uint3 threadgroup_size [[threads_per_threadgroup]]) {
+  threadgroup float scratch[MLP_GATE_Bm * MLP_GATE_Bn];
+  threadgroup float bias_tile[MLP_GATE_Bn];
+  _gptoss_f32_bf16w_dense_matmul_impl<MLP_GATE_Bm, MLP_GATE_Bn, MLP_GATE_Bk,
+                                      MLP_GATE_Sg_Bm, MLP_GATE_Sg_Bn>(
+      args, lhs, rhs, bias, out, scratch, bias_tile, sg_id, sg_count_per_tg,
+      gid, tg_id, local_tid, threadgroup_size);
 }
