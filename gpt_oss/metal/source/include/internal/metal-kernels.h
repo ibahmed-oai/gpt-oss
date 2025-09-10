@@ -130,6 +130,60 @@ enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_matmul_ad
     uint32_t num_cols,
     uint32_t num_rows);
 
+enum gptoss_status
+gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_qkv(
+    const struct gptoss_metal_command_buffer* command_buffer,
+    const struct gptoss_metal_function* f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer* input_buffer,
+    size_t input_offset,
+    const struct gptoss_metal_buffer* weight_buffer,
+    size_t weight_offset,
+    const struct gptoss_metal_buffer* bias_buffer,
+    size_t bias_offset,
+    const struct gptoss_metal_buffer* output_buffer,
+    size_t output_offset,
+    const struct gptoss_metal_buffer* control_buffer,
+    size_t control_offset,
+    uint32_t num_tokens,
+    uint32_t num_cols,
+    uint32_t num_rows);
+
+enum gptoss_status
+gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_attn_output(
+    const struct gptoss_metal_command_buffer* command_buffer,
+    const struct gptoss_metal_function* f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer* input_buffer,
+    size_t input_offset,
+    const struct gptoss_metal_buffer* weight_buffer,
+    size_t weight_offset,
+    const struct gptoss_metal_buffer* bias_buffer,
+    size_t bias_offset,
+    const struct gptoss_metal_buffer* output_buffer,
+    size_t output_offset,
+    const struct gptoss_metal_buffer* control_buffer,
+    size_t control_offset,
+    uint32_t num_tokens,
+    uint32_t num_cols,
+    uint32_t num_rows);
+
+enum gptoss_status
+gptoss_metal_command_buffer_encode_launch_f32_bf16w_dense_matmul_mlp_gate(
+    const struct gptoss_metal_command_buffer* command_buffer,
+    const struct gptoss_metal_function* f32_bf16w_dense_matmul_fn,
+    const struct gptoss_metal_buffer* input_buffer,
+    size_t input_offset,
+    const struct gptoss_metal_buffer* weight_buffer,
+    size_t weight_offset,
+    const struct gptoss_metal_buffer* bias_buffer,
+    size_t bias_offset,
+    const struct gptoss_metal_buffer* output_buffer,
+    size_t output_offset,
+    const struct gptoss_metal_buffer* control_buffer,
+    size_t control_offset,
+    uint32_t num_tokens,
+    uint32_t num_cols,
+    uint32_t num_rows);
+
 enum gptoss_status gptoss_metal_command_buffer_encode_launch_f32_bf16w_unembedding(
     const struct gptoss_metal_command_buffer* command_buffer,
     const struct gptoss_metal_function* f32_bf16w_matmul_fn,

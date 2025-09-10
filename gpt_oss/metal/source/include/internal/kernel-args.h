@@ -4,6 +4,25 @@
 #include <stdint.h>
 #endif
 
+// TODO(ibahmed): specalize using metal function constants.
+#define QKV_Bm 64
+#define QKV_Bn 64
+#define QKV_Bk 32
+#define QKV_Sg_Bm 32
+#define QKV_Sg_Bn 32
+
+#define ATTN_OUTPUT_Bm 32
+#define ATTN_OUTPUT_Bn 64
+#define ATTN_OUTPUT_Bk 64
+#define ATTN_OUTPUT_Sg_Bm 32
+#define ATTN_OUTPUT_Sg_Bn 16
+
+#define MLP_GATE_Bm 64
+#define MLP_GATE_Bn 16
+#define MLP_GATE_Bk 64
+#define MLP_GATE_Sg_Bm 16
+#define MLP_GATE_Sg_Bn 16
+
 struct gptoss_expert_prediction {
     uint32_t expert_id;
     float score;
@@ -64,6 +83,12 @@ struct gptoss_matmul_args {
     uint32_t num_column_vecs;
     uint32_t num_rows;
     uint32_t add;
+};
+
+struct gptoss_dense_matmul_args {
+    uint32_t m;
+    uint32_t n;
+    uint32_t k;
 };
 
 struct gptoss_unembedding_args {
